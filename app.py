@@ -18,20 +18,17 @@ st.set_page_config(page_title="Face Re-Identification", page_icon="🧠", layout
 st.markdown(
     """
     <style>
-    /* ===== Background and Layout ===== */
     .stApp {
         background: linear-gradient(135deg, #edf2fb 0%, #e3f2fd 100%);
         color: #1e293b;
         font-family: 'Segoe UI', sans-serif;
     }
 
-    /* ===== Headers ===== */
     h1, h2, h3 {
         color: #0f172a;
         font-weight: 600;
     }
 
-    /* ===== Buttons ===== */
     .stButton>button {
         background: linear-gradient(90deg, #2563eb, #06b6d4);
         color: white;
@@ -49,13 +46,11 @@ st.markdown(
         box-shadow: 0px 0px 10px rgba(37, 99, 235, 0.4);
     }
 
-    /* ===== Sliders ===== */
     .stSlider > div > div {
         border-radius: 8px;
         background-color: #2563eb;
     }
 
-    /* ===== Tabs ===== */
     .stTabs [data-baseweb="tab-list"] {
         gap: 10px;
         background-color: rgba(255, 255, 255, 0.7);
@@ -78,7 +73,6 @@ st.markdown(
         box-shadow: 0px 2px 6px rgba(0,0,0,0.15);
     }
 
-    /* ===== Info Boxes ===== */
     .stAlert {
         border-radius: 10px;
         background-color: #e0f2fe;
@@ -99,12 +93,10 @@ st.caption("Capture or upload faces to register or match against stored embeddin
 # Helpers
 # -------------------------------------------------------------
 def pil_to_bgr(pil_img: Image.Image) -> np.ndarray:
-    """Convert PIL (RGB) → OpenCV BGR numpy array."""
     rgb = np.array(pil_img.convert("RGB"))
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 def resize_for_arcface(bgr_img: np.ndarray) -> np.ndarray:
-    """ArcFace expects 112×112 BGR image."""
     return cv2.resize(bgr_img, (112, 112))
 
 # -------------------------------------------------------------
@@ -135,21 +127,21 @@ with tab1:
     if st.button("💾 Save Face Embedding", use_container_width=True):
         if cam and name.strip():
             try:
-                # Prepare paths
                 save_dir = os.path.join(engine.project_root, "captured_faces")
                 os.makedirs(save_dir, exist_ok=True)
                 img_path = os.path.join(save_dir, f"{name}.jpg")
 
-                # Save image
                 img = Image.open(cam)
                 img.save(img_path)
 
-                # Compute embedding
+                # ✅ NEW: Get embedding using FaceAnalysis
                 bgr = pil_to_bgr(img)
-                bgr_112 = resize_for_arcface(bgr)
-                emb = embedder.model.get_feat(bgr_112)
+                faces = embedder.app.get(bgr)
+                if not faces:
+                    st.error("No face detected. Please try again.")
+                    st.stop()
+                emb = faces[0].embedding
 
-                # Update embeddings.pkl
                 if os.path.exists(engine.embedding_path):
                     with open(engine.embedding_path, "rb") as f:
                         db = pickle.load(f)
@@ -160,7 +152,6 @@ with tab1:
                 with open(engine.embedding_path, "wb") as f:
                     pickle.dump(db, f)
 
-                # Rebuild FAISS index
                 engine.load_embeddings()
                 engine.build_index()
 
@@ -199,19 +190,20 @@ with tab2:
             st.stop()
 
         try:
+            # ✅ NEW: Get embedding using FaceAnalysis
             bgr = pil_to_bgr(uploaded_img)
-            bgr_112 = resize_for_arcface(bgr)
-            emb = embedder.model.get_feat(bgr_112)
+            faces = embedder.app.get(bgr)
+            if not faces:
+                st.error("No face detected.")
+                st.stop()
+            emb = faces[0].embedding
 
-            # Perform search with top_k=3
             results = engine.search(emb, threshold=threshold, top_k=3)
-
             if not results:
                 st.error("⚠️ No embeddings found or no match detected.")
                 st.stop()
 
             best_label, best_score = results[0]
-
             if best_score > threshold:
                 st.success(f"✅ Match Found: **{best_label}**")
                 st.metric("Similarity", f"{best_score:.4f}")
