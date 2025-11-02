@@ -1,0 +1,6 @@
+[theme]
+primaryColor="#1E90FF"         # DodgerBlue (sea blue tone)
+backgroundColor="#E6F2FF"      # Light sea-blue background
+secondaryBackgroundColor="#B0E0E6"  # PowderBlue for sidebar
+textColor="#003366"            # Deep blue text
+font="sans serif"
