@@ -2,19 +2,20 @@ import os
 import cv2
 import numpy as np
 import pickle
-from insightface.model_zoo import get_model
+from insightface.app import FaceAnalysis
 
 
 class FaceEmbedder:
     """
-    Directly computes ArcFace embeddings (no detection).
-    Perfect for cropped grayscale datasets like ORL (AT&T).
+    Uses FaceAnalysis (recommended for cloud and non-GPU setups).
+    Automatically detects and embeds faces using ArcFace on CPU.
     """
 
     def __init__(self, model_name="buffalo_l", device="cpu"):
-        self.model = get_model(model_name)
-        self.model.prepare(ctx_id=0, provider='CPUExecutionProvider')
-        print(f"✅ ArcFace recognizer '{model_name}' initialized on {device.upper()}")
+        providers = ['CPUExecutionProvider']
+        self.app = FaceAnalysis(name=model_name, providers=providers)
+        self.app.prepare(ctx_id=0, det_size=(640, 640))
+        print(f"✅ ArcFace model '{model_name}' initialized on {device.upper()}")
 
     # -------------------------------------------------------------
     def compute_embeddings(self, base_path, save_path):
@@ -47,11 +48,13 @@ class FaceEmbedder:
                 if len(img.shape) == 2:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-                # Resize to ArcFace input size (112x112)
-                img = cv2.resize(img, (112, 112))
+                # Detect and embed
+                faces = self.app.get(img)
+                if not faces:
+                    print(f"⚠️ No face detected in {file}")
+                    continue
 
-                # ✅ Correct call for your version
-                emb = self.model.get_feat(img)
+                emb = faces[0].embedding
                 embeddings.append(emb)
 
             if embeddings:
@@ -60,7 +63,7 @@ class FaceEmbedder:
             else:
                 print(f"⚠️ No valid embeddings in {folder}")
 
-        # Save all embeddings
+        # Save embeddings
         with open(save_path, "wb") as f:
             pickle.dump(db, f)
 
@@ -77,8 +80,10 @@ class FaceEmbedder:
         if len(img.shape) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        img = cv2.resize(img, (112, 112))
-        emb = self.model.get_feat(img)
+        faces = self.app.get(img)
+        if not faces:
+            raise ValueError("No face detected.")
+        emb = faces[0].embedding
         print(f"✅ Embedding computed for {os.path.basename(image_path)}")
         return emb
 
