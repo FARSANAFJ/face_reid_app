@@ -2,22 +2,23 @@ import os
 import cv2
 import numpy as np
 import pickle
-from insightface.app import FaceAnalysis
+from insightface.model_zoo import get_model
 
 
 class FaceEmbedder:
     """
-    Uses FaceAnalysis (recommended for cloud and non-GPU setups).
-    Automatically detects and embeds faces using ArcFace on CPU.
+    Works for both pre-cropped grayscale datasets (like ORL .pgm)
+    and real webcam images used in Streamlit.
     """
 
     def __init__(self, model_name="buffalo_l", device="cpu"):
-        providers = ['CPUExecutionProvider']
-        self.app = FaceAnalysis(name=model_name, providers=providers)
-        self.app.prepare(ctx_id=0, det_size=(640, 640))
-        print(f"✅ ArcFace model '{model_name}' initialized on {device.upper()}")
+        self.model = get_model(model_name)
+        if self.model is None:
+            raise RuntimeError("❌ Could not load ArcFace model.")
+        self.model.prepare(ctx_id=0, provider='CPUExecutionProvider')
+        print(f"✅ ArcFace recognizer '{model_name}' initialized on {device.upper()}")
 
-    # -------------------------------------------------------------
+    # ------------------------------------------------------------------
     def compute_embeddings(self, base_path, save_path):
         print(f"📂 Reading dataset from: {base_path}")
         db = {}
@@ -44,35 +45,39 @@ class FaceEmbedder:
                     print(f"⚠️ Skipped unreadable image: {img_path}")
                     continue
 
-                # Convert grayscale → BGR
+                # Ensure color
                 if len(img.shape) == 2:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-                # Detect and embed
-                faces = self.app.get(img)
-                if not faces:
-                    print(f"⚠️ No face detected in {file}")
-                    continue
+                # Resize to 112x112
+                img = cv2.resize(img, (112, 112))
 
-                emb = faces[0].embedding
-                embeddings.append(emb)
+                try:
+                    emb = self.model.get_feat(img)
+                    if emb is not None and emb.shape[-1] == 512:
+                        embeddings.append(emb)
+                    else:
+                        print(f"⚠️ Invalid embedding shape for {file}")
+                except Exception as e:
+                    print(f"⚠️ Failed to embed {file}: {e}")
 
             if embeddings:
-                db[folder] = np.mean(embeddings, axis=0)
+                # Average all embeddings per folder
+                db[folder] = np.mean(embeddings, axis=0).astype("float32")
                 print(f"✅ Processed {folder} ({len(embeddings)} images)")
             else:
                 print(f"⚠️ No valid embeddings in {folder}")
 
-        # Save embeddings
+        # Save all embeddings
         with open(save_path, "wb") as f:
             pickle.dump(db, f)
 
         print(f"💾 Embeddings saved to {save_path}")
         return db
 
-    # -------------------------------------------------------------
+    # ------------------------------------------------------------------
     def embed_single_image(self, image_path):
-        """Compute embedding for one image."""
+        """Compute embedding for one single image."""
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"Image not found: {image_path}")
@@ -80,17 +85,13 @@ class FaceEmbedder:
         if len(img.shape) == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
-        faces = self.app.get(img)
-        if not faces:
-            raise ValueError("No face detected.")
-        emb = faces[0].embedding
+        img = cv2.resize(img, (112, 112))
+        emb = self.model.get_feat(img)
         print(f"✅ Embedding computed for {os.path.basename(image_path)}")
-        return emb
+        return emb.astype("float32")
 
 
-# -------------------------------------------------------------
-# MAIN EXECUTION
-# -------------------------------------------------------------
+# ------------------------------------------------------------------
 if __name__ == "__main__":
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     base_path = os.path.join(project_root, "att-database-of-faces")
