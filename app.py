@@ -134,14 +134,16 @@ with tab1:
                 img = Image.open(cam)
                 img.save(img_path)
 
-                # ✅ NEW: Get embedding using FaceAnalysis
+                # ✅ Normalize embedding
                 bgr = pil_to_bgr(img)
                 faces = embedder.app.get(bgr)
                 if not faces:
                     st.error("No face detected. Please try again.")
                     st.stop()
-                emb = faces[0].embedding
 
+                emb = np.array(faces[0].embedding, dtype="float32").squeeze()
+
+                # Load and update embeddings.pkl
                 if os.path.exists(engine.embedding_path):
                     with open(engine.embedding_path, "rb") as f:
                         db = pickle.load(f)
@@ -152,6 +154,7 @@ with tab1:
                 with open(engine.embedding_path, "wb") as f:
                     pickle.dump(db, f)
 
+                # Rebuild FAISS index
                 engine.load_embeddings()
                 engine.build_index()
 
@@ -190,13 +193,13 @@ with tab2:
             st.stop()
 
         try:
-            # ✅ NEW: Get embedding using FaceAnalysis
             bgr = pil_to_bgr(uploaded_img)
             faces = embedder.app.get(bgr)
             if not faces:
                 st.error("No face detected.")
                 st.stop()
-            emb = faces[0].embedding
+
+            emb = np.array(faces[0].embedding, dtype="float32").squeeze()
 
             results = engine.search(emb, threshold=threshold, top_k=3)
             if not results:

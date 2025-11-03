@@ -29,7 +29,7 @@ class FaceSearchEngine:
 
     # -------------------------------------------------------------
     def load_embeddings(self):
-        """Load precomputed embeddings."""
+        """Load precomputed embeddings safely."""
         if not os.path.exists(self.embedding_path):
             raise FileNotFoundError(f"❌ Embedding file not found: {self.embedding_path}")
 
@@ -39,32 +39,42 @@ class FaceSearchEngine:
         if not db:
             raise ValueError("❌ Embedding file is empty. Run embedding.py first.")
 
-        self.labels = list(db.keys())
-        self.embeddings = np.stack(list(db.values())).astype("float32")
+        # Normalize all embeddings to shape (512,)
+        clean_embs, clean_labels = [], []
+        for label, vec in db.items():
+            arr = np.array(vec, dtype="float32").squeeze()
+            if arr.ndim == 1 and arr.shape[0] == 512:
+                clean_embs.append(arr)
+                clean_labels.append(label)
+            else:
+                print(f"⚠️ Skipped invalid embedding for '{label}', shape={arr.shape}")
 
-        print(f"✅ Loaded {len(self.labels)} embeddings from {self.embedding_path}")
+        if not clean_embs:
+            raise ValueError("❌ No valid embeddings found after normalization.")
+
+        self.labels = clean_labels
+        self.embeddings = np.stack(clean_embs).astype("float32")
+
+        print(f"✅ Loaded {len(self.labels)} valid embeddings from {self.embedding_path}")
 
     # -------------------------------------------------------------
     def load_or_build_index(self):
-        """Load FAISS index if it exists, otherwise build one."""
+        """Load FAISS index if available, otherwise build one."""
         if os.path.exists(self.index_path):
             try:
                 self.index = faiss.read_index(self.index_path)
                 print(f"📂 Loaded existing FAISS index from {self.index_path}")
                 return
             except Exception as e:
-                print(f"⚠️ Failed to load existing index: {e}. Rebuilding...")
+                print(f"⚠️ Failed to load FAISS index: {e}. Rebuilding index...")
+
         self.build_index()
 
     # -------------------------------------------------------------
     def build_index(self):
         """Build FAISS index using cosine similarity."""
         if self.embeddings is None or len(self.embeddings) == 0:
-            raise ValueError("❌ No embeddings available to build index.")
-
-        self.embeddings = np.squeeze(self.embeddings)
-        if self.embeddings.ndim == 1:
-            self.embeddings = self.embeddings.reshape(1, -1)
+            raise ValueError("❌ No embeddings available to build FAISS index.")
 
         faiss.normalize_L2(self.embeddings)
         dim = self.embeddings.shape[1]
@@ -85,10 +95,8 @@ class FaceSearchEngine:
         if self.index is None:
             raise RuntimeError("FAISS index not built or loaded.")
 
-        # Normalize input embedding
-        new_embedding = np.array(new_embedding, dtype="float32")
-        new_embedding = np.squeeze(new_embedding)
-
+        # Normalize input embedding to (1,512)
+        new_embedding = np.array(new_embedding, dtype="float32").squeeze()
         if new_embedding.ndim == 1:
             new_embedding = new_embedding.reshape(1, -1)
         elif new_embedding.ndim > 2:
@@ -98,17 +106,16 @@ class FaceSearchEngine:
 
         # Perform top-k similarity search
         D, I = self.index.search(new_embedding, top_k)
-
         results = []
+
         for sim, idx in zip(D[0], I[0]):
             if 0 <= idx < len(self.labels):
                 label = self.labels[idx]
                 results.append((label, float(sim)))
 
-        # Sort by similarity
         results = sorted(results, key=lambda x: x[1], reverse=True)
 
-        # Print the top match to console (debug-friendly)
+        # Console summary
         if results:
             top_label, top_score = results[0]
             if top_score > threshold:
