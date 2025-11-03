@@ -12,11 +12,16 @@ class FaceEmbedder:
     """
 
     def __init__(self, model_name="buffalo_l", device="cpu"):
-        self.model = get_model(model_name)
+        # ----------------------------------------------
+        # ✅ Load ArcFace model locally from /models/buffalo_l
+        # ----------------------------------------------
+        model_path = os.path.join(os.path.dirname(__file__), "..", "models", "buffalo_l")
+        self.model = get_model(model_path)
         if self.model is None:
-            raise RuntimeError("❌ Could not load ArcFace model.")
+            raise RuntimeError(f"❌ Could not load ArcFace model from {model_path}")
+
         self.model.prepare(ctx_id=0, provider='CPUExecutionProvider')
-        print(f"✅ ArcFace recognizer '{model_name}' initialized on {device.upper()}")
+        print(f"✅ ArcFace recognizer loaded locally from {model_path} on {device.upper()}")
 
     # ------------------------------------------------------------------
     def compute_embeddings(self, base_path, save_path):
