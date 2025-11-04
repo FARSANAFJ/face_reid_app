@@ -120,11 +120,15 @@ with tab1:
                 emb = embedder.model.get_feat(cv2.resize(bgr, (112, 112)))
                 emb = np.array(emb, dtype="float32").squeeze()
 
-                # Update embeddings.pkl
+                # Ensure data directory exists before saving embeddings
                 db = {}
+                data_dir = os.path.dirname(engine.embedding_path)
+                os.makedirs(data_dir, exist_ok=True)
+
                 if os.path.exists(engine.embedding_path):
                     with open(engine.embedding_path, "rb") as f:
                         db = pickle.load(f)
+
                 db[name] = emb
                 with open(engine.embedding_path, "wb") as f:
                     pickle.dump(db, f)
