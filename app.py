@@ -145,6 +145,23 @@ with tab1:
         else:
             st.warning("Please capture a face and enter a valid name.")
 
+    # -------------------------------------------------------------
+    # 🗑️ Delete All Captured Faces Button
+    # -------------------------------------------------------------
+    if st.button("🗑️ Delete All Captured Faces", use_container_width=True):
+        try:
+            import shutil
+            faces_dir = os.path.join(engine.project_root, "captured_faces")
+            if os.path.exists(faces_dir):
+                num_files = len(os.listdir(faces_dir))
+                shutil.rmtree(faces_dir)
+                os.makedirs(faces_dir, exist_ok=True)
+                st.success(f"✅ Deleted {num_files} captured face(s) successfully!")
+            else:
+                st.info("ℹ️ No captured faces found to delete.")
+        except Exception as e:
+            st.error(f"Error while deleting faces: {e}")
+
 # =============================================================
 # 🔍 TAB 2 — Match Existing Face
 # =============================================================
