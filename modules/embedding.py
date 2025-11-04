@@ -9,7 +9,7 @@ from insightface.model_zoo import get_model
 class FaceEmbedder:
     """
     Robust ArcFace embedding loader.
-    Automatically extracts buffalo_l.zip and finds model.onnx anywhere inside /models.
+    Automatically extracts buffalo_l.zip and detects w600k_r50.onnx model.
     Works perfectly in Streamlit Cloud (CPU mode).
     """
 
@@ -32,17 +32,25 @@ class FaceEmbedder:
                 raise FileNotFoundError(f"❌ Missing model zip: {self.zip_path}")
 
         # ------------------------------------------------------
-        # Step 2: Auto-detect model.onnx anywhere under /models
+        # Step 2: Auto-detect ArcFace model file
         # ------------------------------------------------------
         detected_model_dir = None
         for root, dirs, files in os.walk(self.models_dir):
-            if "model.onnx" in files:
-                detected_model_dir = root
-                print(f"🔍 Found model.onnx in: {root}")
+            for f in files:
+                # Look for main ArcFace model (w600k_r50.onnx)
+                if f.lower() == "w600k_r50.onnx":
+                    detected_model_dir = root
+                    print(f"🔍 Found ArcFace model: {os.path.join(root, f)}")
+                    break
+            if detected_model_dir:
                 break
 
         if not detected_model_dir:
-            raise FileNotFoundError("❌ Could not locate model.onnx after extraction!")
+            # Log contents for debugging
+            print("🧾 Listing files under /models after extraction:")
+            for root, dirs, files in os.walk(self.models_dir):
+                print("📂", root, "->", files)
+            raise FileNotFoundError("❌ Could not locate w600k_r50.onnx after extraction!")
 
         self.model_dir = detected_model_dir
 
