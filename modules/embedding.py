@@ -8,22 +8,19 @@ from insightface.model_zoo import get_model
 
 class FaceEmbedder:
     """
-    Handles ArcFace embedding extraction.
-    Automatically extracts buffalo_l.zip if only the ZIP exists.
-    Works for both local and Streamlit deployments (CPU mode).
+    Robust ArcFace embedding loader.
+    Automatically extracts buffalo_l.zip and finds model.onnx anywhere inside /models.
+    Works perfectly in Streamlit Cloud (CPU mode).
     """
 
     def __init__(self, model_name="buffalo_l", device="cpu"):
-        # ------------------------------------------------------
-        # Paths setup
-        # ------------------------------------------------------
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.models_dir = os.path.join(self.project_root, "models")
         self.model_dir = os.path.join(self.models_dir, model_name)
         self.zip_path = os.path.join(self.models_dir, f"{model_name}.zip")
 
         # ------------------------------------------------------
-        # Auto-extract ZIP if needed
+        # Step 1: Extract zip if model folder missing
         # ------------------------------------------------------
         if not os.path.exists(self.model_dir):
             if os.path.exists(self.zip_path):
@@ -35,21 +32,22 @@ class FaceEmbedder:
                 raise FileNotFoundError(f"❌ Missing model zip: {self.zip_path}")
 
         # ------------------------------------------------------
-        # Detect correct subfolder (handle nested extraction)
+        # Step 2: Auto-detect model.onnx anywhere under /models
         # ------------------------------------------------------
-        if not os.path.exists(self.model_dir):
-            # Search for folder containing model.onnx
-            for root, dirs, files in os.walk(self.models_dir):
-                if "model.onnx" in files:
-                    self.model_dir = root
-                    print(f"🔧 Adjusted model_dir to {self.model_dir}")
-                    break
+        detected_model_dir = None
+        for root, dirs, files in os.walk(self.models_dir):
+            if "model.onnx" in files:
+                detected_model_dir = root
+                print(f"🔍 Found model.onnx in: {root}")
+                break
 
-        if not os.path.exists(self.model_dir):
-            raise FileNotFoundError(f"❌ Model folder not found after extraction: {self.model_dir}")
+        if not detected_model_dir:
+            raise FileNotFoundError("❌ Could not locate model.onnx after extraction!")
+
+        self.model_dir = detected_model_dir
 
         # ------------------------------------------------------
-        # Load ArcFace Model (CPU-only)
+        # Step 3: Load ArcFace model (CPU)
         # ------------------------------------------------------
         print(f"⚙️  Loading ArcFace model from {self.model_dir} ...")
         self.model = get_model(self.model_dir)
@@ -57,14 +55,10 @@ class FaceEmbedder:
             raise RuntimeError(f"❌ Could not load ArcFace model from {self.model_dir}")
 
         self.model.prepare(ctx_id=0, provider="CPUExecutionProvider")
-        print(f"✅ ArcFace model ready at {self.model_dir} (device={device})")
+        print(f"✅ ArcFace model ready (device={device})")
 
     # ------------------------------------------------------------------
     def compute_embeddings(self, base_path, save_path):
-        """
-        Compute embeddings for all persons in dataset folders.
-        Each subfolder represents one identity.
-        """
         print(f"📂 Reading dataset from: {base_path}")
         db = {}
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -90,7 +84,6 @@ class FaceEmbedder:
                     print(f"⚠️ Skipped unreadable image: {img_path}")
                     continue
 
-                # Ensure 3-channel BGR format
                 if len(img.shape) == 2:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
@@ -100,19 +93,15 @@ class FaceEmbedder:
                     emb = self.model.get_feat(img)
                     if emb is not None and emb.shape[-1] == 512:
                         embeddings.append(emb)
-                    else:
-                        print(f"⚠️ Invalid embedding shape for {file}")
                 except Exception as e:
                     print(f"⚠️ Failed to embed {file}: {e}")
 
             if embeddings:
-                # Average embeddings per identity
                 db[folder] = np.mean(embeddings, axis=0).astype("float32")
                 print(f"✅ Processed {folder} ({len(embeddings)} images)")
             else:
                 print(f"⚠️ No valid embeddings in {folder}")
 
-        # Save embeddings.pkl
         with open(save_path, "wb") as f:
             pickle.dump(db, f)
 
@@ -121,7 +110,6 @@ class FaceEmbedder:
 
     # ------------------------------------------------------------------
     def embed_single_image(self, image_path):
-        """Compute embedding for a single image (used in Streamlit app)."""
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"Image not found: {image_path}")
@@ -135,7 +123,7 @@ class FaceEmbedder:
 
 
 # ------------------------------------------------------------------
-# Local Execution (for dataset embedding)
+# Local Execution
 # ------------------------------------------------------------------
 if __name__ == "__main__":
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
