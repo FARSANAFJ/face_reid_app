@@ -162,6 +162,24 @@ with tab1:
         except Exception as e:
             st.error(f"Error while deleting faces: {e}")
 
+    # -------------------------------------------------------------
+    # 🧨 Hard Reset Button (Delete Embeddings Only)
+    # -------------------------------------------------------------
+    if st.button("🧨 Hard Reset (Delete Embeddings Only)", use_container_width=True):
+        try:
+            data_dir = os.path.join(engine.project_root, "data")
+
+            # Delete embeddings.pkl and FAISS index if present
+            if os.path.exists(engine.embedding_path):
+                os.remove(engine.embedding_path)
+            index_path = os.path.join(data_dir, "faiss_index.bin")
+            if os.path.exists(index_path):
+                os.remove(index_path)
+
+            st.success("✅ All embeddings and FAISS index deleted successfully!")
+        except Exception as e:
+            st.error(f"Error during hard reset: {e}")
+
 # =============================================================
 # 🔍 TAB 2 — Match Existing Face
 # =============================================================
