@@ -31,20 +31,25 @@ class FaceEmbedder:
                 with zipfile.ZipFile(self.zip_path, "r") as zip_ref:
                     zip_ref.extractall(self.models_dir)
                 print(f"✅ Extracted to {self.models_dir}")
-
-                # If extraction creates nested folder like models/buffalo_l/buffalo_l
-                nested_dir = os.path.join(self.model_dir, model_name)
-                if os.path.exists(nested_dir) and os.path.isfile(os.path.join(nested_dir, "model.onnx")):
-                    print(f"🔧 Adjusting nested path: {nested_dir}")
-                    self.model_dir = nested_dir
             else:
                 raise FileNotFoundError(f"❌ Missing model zip: {self.zip_path}")
+
+        # ------------------------------------------------------
+        # Detect correct subfolder (handle nested extraction)
+        # ------------------------------------------------------
+        if not os.path.exists(self.model_dir):
+            # Search for folder containing model.onnx
+            for root, dirs, files in os.walk(self.models_dir):
+                if "model.onnx" in files:
+                    self.model_dir = root
+                    print(f"🔧 Adjusted model_dir to {self.model_dir}")
+                    break
 
         if not os.path.exists(self.model_dir):
             raise FileNotFoundError(f"❌ Model folder not found after extraction: {self.model_dir}")
 
         # ------------------------------------------------------
-        # Load ArcFace model (CPU mode)
+        # Load ArcFace Model (CPU-only)
         # ------------------------------------------------------
         print(f"⚙️  Loading ArcFace model from {self.model_dir} ...")
         self.model = get_model(self.model_dir)
@@ -56,7 +61,10 @@ class FaceEmbedder:
 
     # ------------------------------------------------------------------
     def compute_embeddings(self, base_path, save_path):
-        """Compute embeddings for dataset folders (offline use)."""
+        """
+        Compute embeddings for all persons in dataset folders.
+        Each subfolder represents one identity.
+        """
         print(f"📂 Reading dataset from: {base_path}")
         db = {}
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -82,6 +90,7 @@ class FaceEmbedder:
                     print(f"⚠️ Skipped unreadable image: {img_path}")
                     continue
 
+                # Ensure 3-channel BGR format
                 if len(img.shape) == 2:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
@@ -97,11 +106,13 @@ class FaceEmbedder:
                     print(f"⚠️ Failed to embed {file}: {e}")
 
             if embeddings:
+                # Average embeddings per identity
                 db[folder] = np.mean(embeddings, axis=0).astype("float32")
                 print(f"✅ Processed {folder} ({len(embeddings)} images)")
             else:
                 print(f"⚠️ No valid embeddings in {folder}")
 
+        # Save embeddings.pkl
         with open(save_path, "wb") as f:
             pickle.dump(db, f)
 
@@ -110,7 +121,7 @@ class FaceEmbedder:
 
     # ------------------------------------------------------------------
     def embed_single_image(self, image_path):
-        """Compute embedding for a single image (Streamlit use)."""
+        """Compute embedding for a single image (used in Streamlit app)."""
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"Image not found: {image_path}")
