@@ -81,7 +81,7 @@ def pil_to_bgr(pil_img: Image.Image) -> np.ndarray:
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
 
 # -------------------------------------------------------------
-# Load Models (cached for faster reloads)
+# Load Models (cached)
 # -------------------------------------------------------------
 @st.cache_resource(show_spinner=True)
 def load_models():
@@ -115,14 +115,10 @@ with tab1:
                 img = Image.open(cam)
                 img.save(img_path)
 
-                # Extract face embedding
+                # Extract embedding directly (no .app call)
                 bgr = pil_to_bgr(img)
-                faces = embedder.app.get(bgr)
-                if not faces:
-                    st.error("❌ No face detected. Please try again.")
-                    st.stop()
-
-                emb = np.array(faces[0].embedding, dtype="float32").squeeze()
+                emb = embedder.model.get_feat(cv2.resize(bgr, (112, 112)))
+                emb = np.array(emb, dtype="float32").squeeze()
 
                 # Update embeddings.pkl
                 db = {}
@@ -173,12 +169,9 @@ with tab2:
 
         try:
             bgr = pil_to_bgr(uploaded_img)
-            faces = embedder.app.get(bgr)
-            if not faces:
-                st.error("❌ No face detected.")
-                st.stop()
+            emb = embedder.model.get_feat(cv2.resize(bgr, (112, 112)))
+            emb = np.array(emb, dtype="float32").squeeze()
 
-            emb = np.array(faces[0].embedding, dtype="float32").squeeze()
             results = engine.search(emb, threshold=threshold, top_k=3)
 
             if not results:
@@ -208,6 +201,6 @@ with tab2:
             st.error(f"Error during matching: {e}")
 
 # -------------------------------------------------------------
-# Footer Note
+# Footer
 # -------------------------------------------------------------
 st.info("💡 Tip: Use 'Register New Face' to enroll people, then test them in 'Match Existing Face'.")
